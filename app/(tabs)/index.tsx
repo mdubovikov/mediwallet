@@ -8,6 +8,23 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+// Test types available for selection
+const TEST_TYPES = [
+  'EKG',
+  'Blutbild',
+  'Herzschlag',
+  'Blutdruck',
+  'Blutzucker',
+  'Cholesterin',
+  'Urinanalyse',
+  'Röntgen',
+  'Ultraschall',
+  'CT-Scan',
+  'MRT',
+  'Allgemeine Untersuchung',
+  'Andere',
+];
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -52,10 +69,31 @@ export default function HomeScreen() {
     return true;
   };
 
-  const saveTestResult = async (imageUri: string) => {
+  const selectTestType = (imageUri: string, permanentPath: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const buttons = TEST_TYPES.map((type) => ({
+        text: type,
+        onPress: () => resolve(type),
+      }));
+
+      buttons.push({
+        text: 'Cancel',
+        style: 'cancel' as const,
+        onPress: () => resolve(''),
+      });
+
+      Alert.alert('Test Type Selection', 'Please select the type of test:', buttons, {
+        cancelable: true,
+        onDismiss: () => resolve(''),
+      });
+    });
+  };
+
+  const saveTestResult = async (imageUri: string, testType?: string) => {
     console.log('=== saveTestResult START ===');
     console.log('isWeb:', isWeb, 'Platform.OS:', Platform.OS);
     console.log('imageUri:', imageUri);
+    console.log('testType:', testType);
     
     if (isWeb) {
       // On web, show message using window.alert if available, otherwise use Alert
@@ -101,12 +139,22 @@ export default function HomeScreen() {
         throw new Error(`Failed to save image: ${saveError?.message || saveError}`);
       }
 
+      // Step 3.5: Select test type if not provided
+      let selectedTestType = testType;
+      if (!selectedTestType) {
+        selectedTestType = await selectTestType(imageUri, permanentPath);
+        if (!selectedTestType) {
+          console.log('Test type selection cancelled');
+          return;
+        }
+      }
+
       console.log('Step 4: Adding test result to database...');
       // Save to database
       let testId: number;
       try {
         testId = await addTestResult({
-          testType: 'General Test',
+          testType: selectedTestType,
           imagePath: permanentPath,
           notes: 'Scanned from camera/gallery',
         });
@@ -119,7 +167,7 @@ export default function HomeScreen() {
       console.log('=== saveTestResult SUCCESS ===');
       Alert.alert(
         'Success',
-        `Test result saved successfully!\nID: ${testId}`,
+        `Test result saved successfully!\nType: ${selectedTestType}\nID: ${testId}`,
         [{ text: 'OK' }]
       );
     } catch (error: any) {

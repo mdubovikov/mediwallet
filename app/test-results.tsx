@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,14 +18,18 @@ import { ThemedView } from '@/components/themed-view';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { TestResult } from '@/types/test-result';
 
+type SortOption = 'date' | 'alphabet' | 'group';
+
 export default function TestResultsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   const [testResults, setTestResults] = useState<TestResult[]>([]);
+  const [sortedResults, setSortedResults] = useState<TestResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('date');
 
   const loadTestResults = async () => {
     try {
@@ -32,6 +37,7 @@ export default function TestResultsScreen() {
       const { getAllTestResults } = await import('@/services/database');
       const results = await getAllTestResults();
       setTestResults(results);
+      applySorting(results, sortBy);
     } catch (error) {
       console.error('Error loading test results:', error);
     } finally {
@@ -40,11 +46,93 @@ export default function TestResultsScreen() {
     }
   };
 
+  const applySorting = (results: TestResult[], sortOption: SortOption) => {
+    let sorted: TestResult[] = [...results];
+
+    switch (sortOption) {
+      case 'date':
+        // Sort by date (newest first)
+        sorted.sort((a, b) => {
+          const dateA = new Date(a.createdAt).getTime();
+          const dateB = new Date(b.createdAt).getTime();
+          return dateB - dateA;
+        });
+        break;
+
+      case 'alphabet':
+        // Sort alphabetically by test type
+        sorted.sort((a, b) => {
+          const typeA = a.testType.toLowerCase();
+          const typeB = b.testType.toLowerCase();
+          return typeA.localeCompare(typeB);
+        });
+        break;
+
+      case 'group':
+        // Sort by test type (group), then by date within each group
+        sorted.sort((a, b) => {
+          const typeA = a.testType.toLowerCase();
+          const typeB = b.testType.toLowerCase();
+          if (typeA !== typeB) {
+            return typeA.localeCompare(typeB);
+          }
+          // If same type, sort by date (newest first)
+          const dateA = new Date(a.createdAt).getTime();
+          const dateB = new Date(b.createdAt).getTime();
+          return dateB - dateA;
+        });
+        break;
+    }
+
+    setSortedResults(sorted);
+  };
+
+  const handleSortChange = () => {
+    Alert.alert(
+      'Sort Tests',
+      'Choose sorting option:',
+      [
+        {
+          text: 'By Date (Newest First)',
+          onPress: () => {
+            setSortBy('date');
+            applySorting(testResults, 'date');
+          },
+        },
+        {
+          text: 'Alphabetically',
+          onPress: () => {
+            setSortBy('alphabet');
+            applySorting(testResults, 'alphabet');
+          },
+        },
+        {
+          text: 'By Group (Type)',
+          onPress: () => {
+            setSortBy('group');
+            applySorting(testResults, 'group');
+          },
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   useFocusEffect(
     useCallback(() => {
       loadTestResults();
     }, [])
   );
+
+  useEffect(() => {
+    if (testResults.length > 0) {
+      applySorting(testResults, sortBy);
+    }
+  }, [sortBy]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -100,6 +188,11 @@ export default function TestResultsScreen() {
         options={{
           title: 'Test Results',
           headerBackTitle: 'Back',
+          headerRight: () => (
+            <TouchableOpacity onPress={handleSortChange} style={styles.sortButton}>
+              <Ionicons name="swap-vertical" size={24} color={isDark ? '#fff' : '#000'} />
+            </TouchableOpacity>
+          ),
         }}
       />
       {testResults.length === 0 ? (
@@ -111,13 +204,28 @@ export default function TestResultsScreen() {
           </ThemedText>
         </View>
       ) : (
-        <FlatList
-          data={testResults}
-          renderItem={renderTestResult}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        />
+        <>
+          <View
+            style={[
+              styles.sortIndicator,
+              {
+                backgroundColor: isDark ? '#2c2c2c' : '#f5f5f5',
+                borderBottomColor: isDark ? '#444' : '#e0e0e0',
+              },
+            ]}
+          >
+            <ThemedText style={styles.sortText}>
+              Sorted by: {sortBy === 'date' ? 'Date' : sortBy === 'alphabet' ? 'Alphabet' : 'Group'}
+            </ThemedText>
+          </View>
+          <FlatList
+            data={sortedResults}
+            renderItem={renderTestResult}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          />
+        </>
       )}
     </ThemedView>
   );
@@ -197,6 +305,20 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginTop: 8,
     textAlign: 'center',
+  },
+  sortButton: {
+    padding: 8,
+    marginRight: 8,
+  },
+  sortIndicator: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  sortText: {
+    fontSize: 14,
+    opacity: 0.7,
+    fontWeight: '500',
   },
 });
 

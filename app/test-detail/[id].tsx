@@ -226,6 +226,21 @@ export default function TestDetailScreen() {
             </ThemedText>
           )}
         </View>
+
+        <TouchableOpacity
+          style={[styles.aiButton, isDark && styles.aiButtonDark]}
+          onPress={() => {
+            Alert.alert(
+              'Ask AI',
+              'AI analysis feature will be available soon. This will help you understand your test results.',
+              [{ text: 'OK' }]
+            );
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="sparkles" size={24} color="#fff" />
+          <ThemedText style={styles.aiButtonText}>Ask AI</ThemedText>
+        </TouchableOpacity>
       </ScrollView>
     </ThemedView>
   );
@@ -314,6 +329,32 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  aiButton: {
+    backgroundColor: '#9B59B6',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    shadowColor: '#9B59B6',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  aiButtonDark: {
+    backgroundColor: '#8B4CB8',
+  },
+  aiButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
   },
 });
 
