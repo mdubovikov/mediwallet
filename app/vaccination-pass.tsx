@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -23,6 +23,166 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Vaccination, NewVaccination } from '@/types/vaccination';
 import { DesignSystem, getThemeColors } from '@/constants/design';
 
+// Liste der gängigen Impfungen in Deutschland (STIKO-Empfehlungen)
+const COMMON_VACCINATIONS = [
+  'Tetanus',
+  'Diphtherie',
+  'Keuchhusten (Pertussis)',
+  'Polio (Kinderlähmung)',
+  'Haemophilus influenzae Typ b (Hib)',
+  'Hepatitis B',
+  'Masern',
+  'Mumps',
+  'Röteln',
+  'MMR (Masern-Mumps-Röteln)',
+  'Windpocken (Varizellen)',
+  'Pneumokokken',
+  'Meningokokken C',
+  'Meningokokken B',
+  'Meningokokken ACWY',
+  'Rotaviren',
+  'HPV (Humane Papillomviren)',
+  'Grippe (Influenza)',
+  'COVID-19',
+  'FSME (Zecken-Enzephalitis)',
+  'Hepatitis A',
+  'Tollwut',
+  'Gelbfieber',
+  'Typhus',
+  'Cholera',
+  'Japanische Enzephalitis',
+  'Tollwut (Reiseimpfung)',
+  'Tuberkulose (BCG)',
+  'Herpes Zoster (Gürtelrose)',
+  'Pertussis (Auffrischung)',
+  'Tetanus-Diphtherie (Td)',
+  'Tetanus-Diphtherie-Keuchhusten (Tdap)',
+].sort();
+
+// Gültigkeitsdauer der Impfungen in Jahren (basierend auf STIKO-Empfehlungen)
+const getVaccinationValidityYears = (vaccinationName: string): number | null => {
+  const name = vaccinationName.toLowerCase();
+  
+  // Impfungen mit lebenslanger Gültigkeit
+  if (name.includes('masern') || name.includes('mumps') || name.includes('röteln') || 
+      name.includes('mmr') || name.includes('windpocken') || name.includes('varizellen') ||
+      name.includes('polio') || name.includes('kinderlähmung') || name.includes('hepatitis b') ||
+      name.includes('hpv') || name.includes('papillom') || name.includes('tuberkulose') ||
+      name.includes('bcg')) {
+    return null; // null = lebenslang
+  }
+  
+  // Impfungen mit jährlicher Auffrischung
+  if (name.includes('grippe') || name.includes('influenza')) {
+    return 1;
+  }
+  
+  // COVID-19: variabel, ca. 6-12 Monate (hier 1 Jahr)
+  if (name.includes('covid')) {
+    return 1;
+  }
+  
+  // FSME: 3-5 Jahre (hier 3 Jahre)
+  if (name.includes('fsme') || name.includes('zecken')) {
+    return 3;
+  }
+  
+  // Tetanus, Diphtherie, Keuchhusten: 10 Jahre
+  if (name.includes('tetanus') || name.includes('diphtherie') || name.includes('keuchhusten') ||
+      name.includes('pertussis') || name.includes('td') || name.includes('tdap')) {
+    return 10;
+  }
+  
+  // Hepatitis A: 20+ Jahre
+  if (name.includes('hepatitis a')) {
+    return 20;
+  }
+  
+  // Tollwut: 2-3 Jahre
+  if (name.includes('tollwut')) {
+    return 3;
+  }
+  
+  // Gelbfieber: 10 Jahre (lebenslang nach Auffrischung)
+  if (name.includes('gelbfieber')) {
+    return 10;
+  }
+  
+  // Typhus: 3 Jahre
+  if (name.includes('typhus')) {
+    return 3;
+  }
+  
+  // Cholera: 2 Jahre
+  if (name.includes('cholera')) {
+    return 2;
+  }
+  
+  // Japanische Enzephalitis: 1-2 Jahre
+  if (name.includes('japanische')) {
+    return 2;
+  }
+  
+  // Herpes Zoster: 5+ Jahre
+  if (name.includes('herpes zoster') || name.includes('gürtelrose')) {
+    return 5;
+  }
+  
+  // Standard: 10 Jahre für unbekannte Impfungen
+  return 10;
+};
+
+// Berechnet das Ablaufdatum einer Impfung
+const calculateExpiryDate = (vaccinationName: string, vaccinationDate: string): Date | null => {
+  const validityYears = getVaccinationValidityYears(vaccinationName);
+  if (validityYears === null) {
+    return null; // Lebendlang gültig
+  }
+  
+  const date = new Date(vaccinationDate);
+  const expiryDate = new Date(date);
+  expiryDate.setFullYear(expiryDate.getFullYear() + validityYears);
+  return expiryDate;
+};
+
+// Formatiert das Ablaufdatum als Text
+const formatExpiryInfo = (vaccinationName: string, vaccinationDate: string): string => {
+  const expiryDate = calculateExpiryDate(vaccinationName, vaccinationDate);
+  
+  if (expiryDate === null) {
+    return 'Lebenslang gültig';
+  }
+  
+  const now = new Date();
+  const diffTime = expiryDate.getTime() - now.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 0) {
+    const daysOverdue = Math.abs(diffDays);
+    if (daysOverdue < 30) {
+      return `Abgelaufen vor ${daysOverdue} Tag${daysOverdue !== 1 ? 'en' : ''}`;
+    } else if (daysOverdue < 365) {
+      const monthsOverdue = Math.floor(daysOverdue / 30);
+      return `Abgelaufen vor ${monthsOverdue} Monat${monthsOverdue !== 1 ? 'en' : ''}`;
+    } else {
+      const yearsOverdue = Math.floor(daysOverdue / 365);
+      return `Abgelaufen vor ${yearsOverdue} Jahr${yearsOverdue !== 1 ? 'en' : ''}`;
+    }
+  } else if (diffDays < 30) {
+    return `Läuft in ${diffDays} Tag${diffDays !== 1 ? 'en' : ''} ab`;
+  } else if (diffDays < 365) {
+    const monthsRemaining = Math.floor(diffDays / 30);
+    return `Läuft in ${monthsRemaining} Monat${monthsRemaining !== 1 ? 'en' : ''} ab`;
+  } else {
+    const yearsRemaining = Math.floor(diffDays / 365);
+    const remainingMonths = Math.floor((diffDays % 365) / 30);
+    if (remainingMonths === 0) {
+      return `Läuft in ${yearsRemaining} Jahr${yearsRemaining !== 1 ? 'en' : ''} ab`;
+    }
+    return `Läuft in ${yearsRemaining} Jahr${yearsRemaining !== 1 ? 'en' : ''} und ${remainingMonths} Monat${remainingMonths !== 1 ? 'en' : ''} ab`;
+  }
+};
+
 export default function VaccinationPassScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -36,12 +196,26 @@ export default function VaccinationPassScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingVaccination, setEditingVaccination] = useState<Vaccination | null>(null);
+  const [showVaccinationPicker, setShowVaccinationPicker] = useState(false);
+  const [vaccinationSearch, setVaccinationSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'alphabetical' | 'expiry' | 'newest' | 'status'>('status');
 
   const [formData, setFormData] = useState<NewVaccination>({
     name: '',
     date: new Date().toISOString().split('T')[0],
     notes: '',
   });
+
+  const filteredVaccinations = useMemo(() => {
+    const allVaccinations = COMMON_VACCINATIONS;
+    if (!vaccinationSearch.trim()) {
+      return allVaccinations;
+    }
+    const filtered = allVaccinations.filter((vaccination) =>
+      vaccination.toLowerCase().includes(vaccinationSearch.toLowerCase())
+    );
+    return filtered;
+  }, [vaccinationSearch]);
 
   const loadVaccinations = async () => {
     if (isWeb) {
@@ -82,6 +256,80 @@ export default function VaccinationPassScreen() {
     setRefreshing(true);
     loadVaccinations();
   };
+
+  // Sortierte Impfungen basierend auf der gewählten Sortieroption
+  const sortedVaccinations = useMemo(() => {
+    const sorted = [...vaccinations];
+    
+    switch (sortBy) {
+      case 'alphabetical':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+      
+      case 'expiry':
+        return sorted.sort((a, b) => {
+          const expiryA = calculateExpiryDate(a.name, a.date);
+          const expiryB = calculateExpiryDate(b.name, b.date);
+          
+          // Impfungen ohne Ablaufdatum ans Ende
+          if (expiryA === null && expiryB === null) return 0;
+          if (expiryA === null) return 1;
+          if (expiryB === null) return -1;
+          
+          // Abgelaufene zuerst, dann nach Ablaufdatum sortiert
+          const now = new Date();
+          const diffA = expiryA.getTime() - now.getTime();
+          const diffB = expiryB.getTime() - now.getTime();
+          
+          // Abgelaufene zuerst
+          if (diffA < 0 && diffB >= 0) return -1;
+          if (diffA >= 0 && diffB < 0) return 1;
+          
+          // Dann nach Ablaufdatum sortieren (nächste zuerst)
+          return diffA - diffB;
+        });
+      
+      case 'newest':
+        return sorted.sort((a, b) => {
+          const dateA = new Date(a.date).getTime();
+          const dateB = new Date(b.date).getTime();
+          return dateB - dateA; // Neueste zuerst
+        });
+      
+      case 'status':
+        return sorted.sort((a, b) => {
+          const expiryA = calculateExpiryDate(a.name, a.date);
+          const expiryB = calculateExpiryDate(b.name, b.date);
+          const now = new Date();
+          
+          // Status-Priorität: Abgelaufen > Läuft bald ab > Gültig > Lebenslang
+          const getStatusPriority = (expiry: Date | null): number => {
+            if (expiry === null) return 4; // Lebenslang
+            const diffDays = Math.floor((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) return 1; // Abgelaufen
+            if (diffDays < 90) return 2; // Läuft bald ab
+            return 3; // Gültig
+          };
+          
+          const priorityA = getStatusPriority(expiryA);
+          const priorityB = getStatusPriority(expiryB);
+          
+          if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+          }
+          
+          // Bei gleichem Status nach Ablaufdatum sortieren
+          if (expiryA !== null && expiryB !== null) {
+            return expiryA.getTime() - expiryB.getTime();
+          }
+          
+          // Bei Lebenslang nach Name sortieren
+          return a.name.localeCompare(b.name, 'de');
+        });
+      
+      default:
+        return sorted;
+    }
+  }, [vaccinations, sortBy]);
 
   const calculateTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
@@ -222,6 +470,41 @@ export default function VaccinationPassScreen() {
           <ThemedText style={[styles.timeAgo, { color: themeColors.textSecondary }]}>
             {calculateTimeAgo(item.date)}
           </ThemedText>
+          {calculateExpiryDate(item.name, item.date) !== null && (
+            <View style={styles.expiryContainer}>
+              <Ionicons 
+                name="time-outline" 
+                size={14} 
+                color={(() => {
+                  const expiryDate = calculateExpiryDate(item.name, item.date);
+                  if (expiryDate === null) return themeColors.textSecondary;
+                  const now = new Date();
+                  const diffDays = Math.floor((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  if (diffDays < 0) return '#ff4444'; // Abgelaufen
+                  if (diffDays < 90) return '#ff9500'; // Läuft bald ab
+                  return themeColors.textSecondary; // Noch gültig
+                })()} 
+              />
+              <ThemedText
+                style={[
+                  styles.expiryText,
+                  {
+                    color: (() => {
+                      const expiryDate = calculateExpiryDate(item.name, item.date);
+                      if (expiryDate === null) return themeColors.textSecondary;
+                      const now = new Date();
+                      const diffDays = Math.floor((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                      if (diffDays < 0) return '#ff4444'; // Abgelaufen
+                      if (diffDays < 90) return '#ff9500'; // Läuft bald ab
+                      return themeColors.textSecondary; // Noch gültig
+                    })(),
+                  },
+                ]}
+              >
+                {formatExpiryInfo(item.name, item.date)}
+              </ThemedText>
+            </View>
+          )}
           {item.notes && (
             <ThemedText
               style={[styles.notes, { color: themeColors.textSecondary }]}
@@ -290,13 +573,122 @@ export default function VaccinationPassScreen() {
           </ThemedText>
         </View>
       ) : (
-        <FlatList
-          data={vaccinations}
-          renderItem={renderVaccination}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        />
+        <>
+          <View style={[styles.sortContainer, { backgroundColor: themeColors.surfaceElevated, borderBottomColor: themeColors.border }]}>
+            <View style={styles.sortButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.sortButton,
+                  {
+                    backgroundColor: sortBy === 'status' ? DesignSystem.colors.primary.main : themeColors.surface,
+                    borderColor: themeColors.border,
+                  },
+                ]}
+                onPress={() => setSortBy('status')}
+                activeOpacity={0.7}
+              >
+                <Ionicons 
+                  name="flag-outline" 
+                  size={16} 
+                  color={sortBy === 'status' ? '#fff' : themeColors.text} 
+                />
+                <ThemedText
+                  style={[
+                    styles.sortButtonText,
+                    { color: sortBy === 'status' ? '#fff' : themeColors.text },
+                  ]}
+                >
+                  Status
+                </ThemedText>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.sortButton,
+                  {
+                    backgroundColor: sortBy === 'expiry' ? DesignSystem.colors.primary.main : themeColors.surface,
+                    borderColor: themeColors.border,
+                  },
+                ]}
+                onPress={() => setSortBy('expiry')}
+                activeOpacity={0.7}
+              >
+                <Ionicons 
+                  name="time-outline" 
+                  size={16} 
+                  color={sortBy === 'expiry' ? '#fff' : themeColors.text} 
+                />
+                <ThemedText
+                  style={[
+                    styles.sortButtonText,
+                    { color: sortBy === 'expiry' ? '#fff' : themeColors.text },
+                  ]}
+                >
+                  Ablauf
+                </ThemedText>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.sortButton,
+                  {
+                    backgroundColor: sortBy === 'newest' ? DesignSystem.colors.primary.main : themeColors.surface,
+                    borderColor: themeColors.border,
+                  },
+                ]}
+                onPress={() => setSortBy('newest')}
+                activeOpacity={0.7}
+              >
+                <Ionicons 
+                  name="calendar-outline" 
+                  size={16} 
+                  color={sortBy === 'newest' ? '#fff' : themeColors.text} 
+                />
+                <ThemedText
+                  style={[
+                    styles.sortButtonText,
+                    { color: sortBy === 'newest' ? '#fff' : themeColors.text },
+                  ]}
+                >
+                  Neueste
+                </ThemedText>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.sortButton,
+                  {
+                    backgroundColor: sortBy === 'alphabetical' ? DesignSystem.colors.primary.main : themeColors.surface,
+                    borderColor: themeColors.border,
+                  },
+                ]}
+                onPress={() => setSortBy('alphabetical')}
+                activeOpacity={0.7}
+              >
+                <Ionicons 
+                  name="text-outline" 
+                  size={16} 
+                  color={sortBy === 'alphabetical' ? '#fff' : themeColors.text} 
+                />
+                <ThemedText
+                  style={[
+                    styles.sortButtonText,
+                    { color: sortBy === 'alphabetical' ? '#fff' : themeColors.text },
+                  ]}
+                >
+                  A-Z
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <FlatList
+            data={sortedVaccinations}
+            renderItem={renderVaccination}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          />
+        </>
       )}
 
       {!isWeb && (
@@ -356,20 +748,92 @@ export default function VaccinationPassScreen() {
                       <ThemedText style={[styles.label, { color: themeColors.text }]}>
                         Impfungsname *
                       </ThemedText>
-                      <TextInput
+                      <TouchableOpacity
                         style={[
-                          styles.input,
+                          styles.vaccinationPickerButton,
                           {
                             backgroundColor: themeColors.surface,
-                            color: themeColors.text,
                             borderColor: themeColors.border,
                           },
                         ]}
-                        value={formData.name}
-                        onChangeText={(text) => setFormData({ ...formData, name: text })}
-                        placeholder="z.B. COVID-19, Tetanus, etc."
-                        placeholderTextColor={themeColors.textSecondary}
-                      />
+                        onPress={() => setShowVaccinationPicker(!showVaccinationPicker)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.vaccinationPickerButtonContent}>
+                          <Ionicons name="medical-outline" size={20} color={themeColors.text} />
+                          <ThemedText
+                            style={[
+                              styles.vaccinationPickerText,
+                              {
+                                color: formData.name ? themeColors.text : themeColors.textSecondary,
+                              },
+                            ]}
+                          >
+                            {formData.name || 'Impfung auswählen...'}
+                          </ThemedText>
+                        </View>
+                        <Ionicons 
+                          name={showVaccinationPicker ? "chevron-up" : "chevron-down"} 
+                          size={20} 
+                          color={themeColors.textSecondary} 
+                        />
+                      </TouchableOpacity>
+                      {showVaccinationPicker && (
+                        <View style={[styles.dropdownContainer, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+                          <View style={[styles.searchContainer, { backgroundColor: themeColors.background, borderColor: themeColors.border }]}>
+                            <Ionicons name="search" size={18} color={themeColors.textSecondary} />
+                            <TextInput
+                              style={[styles.searchInput, { color: themeColors.text }]}
+                              value={vaccinationSearch}
+                              onChangeText={setVaccinationSearch}
+                              placeholder="Suchen..."
+                              placeholderTextColor={themeColors.textSecondary}
+                            />
+                            {vaccinationSearch.length > 0 && (
+                              <TouchableOpacity onPress={() => setVaccinationSearch('')}>
+                                <Ionicons name="close-circle" size={18} color={themeColors.textSecondary} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <ScrollView style={styles.dropdownList} nestedScrollEnabled={true}>
+                            {filteredVaccinations.map((item) => (
+                              <TouchableOpacity
+                                key={item}
+                                style={[
+                                  styles.dropdownOption,
+                                  {
+                                    backgroundColor: formData.name === item ? themeColors.surfaceElevated : 'transparent',
+                                  },
+                                ]}
+                                onPress={() => {
+                                  setFormData({ ...formData, name: item });
+                                  setShowVaccinationPicker(false);
+                                  setVaccinationSearch('');
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <ThemedText style={[styles.dropdownOptionText, { color: themeColors.text }]}>
+                                  {item}
+                                </ThemedText>
+                                {formData.name === item && (
+                                  <Ionicons name="checkmark" size={18} color={DesignSystem.colors.primary.main} />
+                                )}
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      )}
+                      {formData.name && !showVaccinationPicker && (
+                        <TouchableOpacity
+                          style={styles.clearButton}
+                          onPress={() => setFormData({ ...formData, name: '' })}
+                        >
+                          <Ionicons name="close-circle" size={18} color={themeColors.textSecondary} />
+                          <ThemedText style={[styles.clearButtonText, { color: themeColors.textSecondary }]}>
+                            Auswahl zurücksetzen
+                          </ThemedText>
+                        </TouchableOpacity>
+                      )}
                     </View>
 
                     <View style={styles.formGroup}>
@@ -439,6 +903,92 @@ export default function VaccinationPassScreen() {
           </TouchableOpacity>
         </View>
       </Modal>
+
+      {/* Impfungsauswahl-Modal - muss außerhalb des anderen Modals sein */}
+      <Modal
+        visible={showVaccinationPicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowVaccinationPicker(false);
+          setVaccinationSearch('');
+        }}
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={[styles.pickerModalContent, { backgroundColor: themeColors.background }]}>
+            <View style={[styles.pickerModalHeader, { borderBottomColor: themeColors.border }]}>
+              <ThemedText style={[styles.pickerModalTitle, { color: themeColors.text }]}>
+                Impfung auswählen ({filteredVaccinations.length})
+              </ThemedText>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowVaccinationPicker(false);
+                  setVaccinationSearch('');
+                }}
+                style={styles.pickerCloseButton}
+              >
+                <Ionicons name="close" size={24} color={themeColors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.searchContainer, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+              <Ionicons name="search" size={20} color={themeColors.textSecondary} />
+              <TextInput
+                style={[styles.searchInput, { color: themeColors.text }]}
+                value={vaccinationSearch}
+                onChangeText={setVaccinationSearch}
+                placeholder="Suchen..."
+                placeholderTextColor={themeColors.textSecondary}
+                autoFocus={true}
+              />
+              {vaccinationSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setVaccinationSearch('')}>
+                  <Ionicons name="close-circle" size={20} color={themeColors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <FlatList
+              data={filteredVaccinations}
+              keyExtractor={(item, index) => `${item}-${index}`}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.vaccinationOption,
+                    {
+                      backgroundColor: formData.name === item ? themeColors.surfaceElevated : 'transparent',
+                      borderBottomColor: themeColors.border,
+                    },
+                  ]}
+                  onPress={() => {
+                    setFormData({ ...formData, name: item });
+                    setShowVaccinationPicker(false);
+                    setVaccinationSearch('');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <ThemedText style={[styles.vaccinationOptionText, { color: themeColors.text }]}>
+                    {item}
+                  </ThemedText>
+                  {formData.name === item && (
+                    <Ionicons name="checkmark" size={20} color={DesignSystem.colors.primary.main} />
+                  )}
+                </TouchableOpacity>
+              )}
+              style={styles.vaccinationList}
+              contentContainerStyle={styles.vaccinationListContent}
+              ListEmptyComponent={
+                <View style={styles.emptyPickerContainer}>
+                  <ThemedText style={[styles.emptyPickerText, { color: themeColors.textSecondary }]}>
+                    Keine Impfungen gefunden
+                  </ThemedText>
+                </View>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -456,6 +1006,31 @@ const styles = StyleSheet.create({
     padding: DesignSystem.spacing.md,
     gap: DesignSystem.spacing.md,
     paddingBottom: 100,
+  },
+  sortContainer: {
+    padding: DesignSystem.spacing.md,
+    borderBottomWidth: 1,
+  },
+  sortButtons: {
+    flexDirection: 'row',
+    gap: DesignSystem.spacing.sm,
+    flexWrap: 'wrap',
+  },
+  sortButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DesignSystem.spacing.xs,
+    paddingHorizontal: DesignSystem.spacing.md,
+    paddingVertical: DesignSystem.spacing.sm,
+    borderRadius: DesignSystem.borderRadius.md,
+    borderWidth: 1,
+    flex: 1,
+    minWidth: '22%',
+    justifyContent: 'center',
+  },
+  sortButtonText: {
+    fontSize: DesignSystem.typography.fontSize.sm,
+    fontWeight: DesignSystem.typography.fontWeight.medium,
   },
   card: {
     borderRadius: DesignSystem.borderRadius.lg,
@@ -497,6 +1072,16 @@ const styles = StyleSheet.create({
   timeAgo: {
     fontSize: DesignSystem.typography.fontSize.sm,
     fontStyle: 'italic',
+  },
+  expiryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DesignSystem.spacing.xs,
+    marginTop: DesignSystem.spacing.xs,
+  },
+  expiryText: {
+    fontSize: DesignSystem.typography.fontSize.sm,
+    fontWeight: DesignSystem.typography.fontWeight.medium,
   },
   notes: {
     fontSize: DesignSystem.typography.fontSize.sm,
@@ -628,6 +1213,123 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: DesignSystem.typography.fontSize.xs,
     marginTop: DesignSystem.spacing.xs,
+  },
+  vaccinationPickerButton: {
+    borderWidth: 1,
+    borderRadius: DesignSystem.borderRadius.md,
+    padding: DesignSystem.spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  vaccinationPickerButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DesignSystem.spacing.sm,
+    flex: 1,
+  },
+  vaccinationPickerText: {
+    fontSize: DesignSystem.typography.fontSize.base,
+  },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DesignSystem.spacing.xs,
+    marginTop: DesignSystem.spacing.sm,
+    paddingVertical: DesignSystem.spacing.xs,
+  },
+  clearButtonText: {
+    fontSize: DesignSystem.typography.fontSize.sm,
+  },
+  dropdownContainer: {
+    marginTop: DesignSystem.spacing.sm,
+    borderWidth: 1,
+    borderRadius: DesignSystem.borderRadius.md,
+    maxHeight: 300,
+    overflow: 'hidden',
+  },
+  dropdownList: {
+    maxHeight: 250,
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: DesignSystem.spacing.md,
+    paddingHorizontal: DesignSystem.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: DesignSystem.colors.neutral[200],
+  },
+  dropdownOptionText: {
+    fontSize: DesignSystem.typography.fontSize.base,
+    flex: 1,
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  pickerModalContent: {
+    borderTopLeftRadius: DesignSystem.borderRadius.xl,
+    borderTopRightRadius: DesignSystem.borderRadius.xl,
+    height: '80%',
+    width: '100%',
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: DesignSystem.spacing.lg,
+    borderBottomWidth: 1,
+  },
+  pickerModalTitle: {
+    fontSize: DesignSystem.typography.fontSize.xl,
+    fontWeight: DesignSystem.typography.fontWeight.bold,
+  },
+  pickerCloseButton: {
+    padding: DesignSystem.spacing.xs,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: DesignSystem.borderRadius.md,
+    paddingHorizontal: DesignSystem.spacing.md,
+    paddingVertical: DesignSystem.spacing.sm,
+    margin: DesignSystem.spacing.lg,
+    marginTop: DesignSystem.spacing.md,
+    gap: DesignSystem.spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: DesignSystem.typography.fontSize.base,
+  },
+  vaccinationList: {
+    flex: 1,
+  },
+  vaccinationListContent: {
+    paddingBottom: DesignSystem.spacing.lg,
+  },
+  vaccinationOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: DesignSystem.spacing.md,
+    paddingHorizontal: DesignSystem.spacing.lg,
+    borderBottomWidth: 1,
+  },
+  vaccinationOptionText: {
+    fontSize: DesignSystem.typography.fontSize.base,
+    flex: 1,
+  },
+  emptyPickerContainer: {
+    padding: DesignSystem.spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyPickerText: {
+    fontSize: DesignSystem.typography.fontSize.base,
+    textAlign: 'center',
   },
 });
 
