@@ -1,4 +1,4 @@
-# MediWallet - Verwaltung medizinischer Testergebnisse
+# MediWallet - Verwaltung medizinischer Testergebnisse 2
 
 Eine mobile Anwendung zur Verwaltung und Speicherung medizinischer Testergebnisse mit lokaler Datenbankspeicherung.
 
