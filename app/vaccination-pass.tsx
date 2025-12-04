@@ -16,7 +16,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -37,8 +36,6 @@ export default function VaccinationPassScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingVaccination, setEditingVaccination] = useState<Vaccination | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const [formData, setFormData] = useState<NewVaccination>({
     name: '',
@@ -117,21 +114,17 @@ export default function VaccinationPassScreen() {
   };
 
   const handleAdd = () => {
-    const today = new Date();
     setEditingVaccination(null);
-    setSelectedDate(today);
     setFormData({
       name: '',
-      date: today.toISOString().split('T')[0],
+      date: new Date().toISOString().split('T')[0],
       notes: '',
     });
     setShowAddModal(true);
   };
 
   const handleEdit = (vaccination: Vaccination) => {
-    const vaccinationDate = new Date(vaccination.date);
     setEditingVaccination(vaccination);
-    setSelectedDate(vaccinationDate);
     setFormData({
       name: vaccination.name,
       date: vaccination.date.split('T')[0],
@@ -383,83 +376,29 @@ export default function VaccinationPassScreen() {
                       <ThemedText style={[styles.label, { color: themeColors.text }]}>
                         Impfdatum *
                       </ThemedText>
-                      {!isWeb ? (
-                        <>
-                          <TouchableOpacity
-                            style={[
-                              styles.datePickerButton,
-                              {
-                                backgroundColor: themeColors.surface,
-                                borderColor: themeColors.border,
-                              },
-                            ]}
-                            onPress={() => setShowDatePicker(true)}
-                            activeOpacity={0.7}
-                          >
-                            <View style={styles.datePickerButtonContent}>
-                              <Ionicons name="calendar-outline" size={20} color={themeColors.text} />
-                              <ThemedText style={[styles.datePickerText, { color: themeColors.text }]}>
-                                {selectedDate.toLocaleDateString('de-DE', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                })}
-                              </ThemedText>
-                            </View>
-                            <Ionicons name="chevron-down" size={20} color={themeColors.textSecondary} />
-                          </TouchableOpacity>
-                          {showDatePicker && (
-                            <DateTimePicker
-                              value={selectedDate}
-                              mode="date"
-                              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                              onChange={(event, date) => {
-                                if (Platform.OS === 'android') {
-                                  setShowDatePicker(false);
-                                }
-                                if (date) {
-                                  setSelectedDate(date);
-                                  setFormData({
-                                    ...formData,
-                                    date: date.toISOString().split('T')[0],
-                                  });
-                                }
-                                if (Platform.OS === 'android' && event.type === 'dismissed') {
-                                  setShowDatePicker(false);
-                                }
-                              }}
-                              maximumDate={new Date()}
-                              locale="de-DE"
-                            />
-                          )}
-                          {Platform.OS === 'ios' && showDatePicker && (
-                            <View style={styles.datePickerActions}>
-                              <TouchableOpacity
-                                style={[styles.datePickerActionButton, { backgroundColor: themeColors.surface }]}
-                                onPress={() => setShowDatePicker(false)}
-                              >
-                                <ThemedText style={[styles.datePickerActionText, { color: themeColors.text }]}>
-                                  Fertig
-                                </ThemedText>
-                              </TouchableOpacity>
-                            </View>
-                          )}
-                        </>
-                      ) : (
-                        <TextInput
-                          style={[
-                            styles.input,
-                            {
-                              backgroundColor: themeColors.surface,
-                              color: themeColors.text,
-                              borderColor: themeColors.border,
-                            },
-                          ]}
-                          type="date"
-                          value={formData.date}
-                          onChangeText={(text) => setFormData({ ...formData, date: text })}
-                        />
-                      )}
+                      <TextInput
+                        style={[
+                          styles.input,
+                          {
+                            backgroundColor: themeColors.surface,
+                            color: themeColors.text,
+                            borderColor: themeColors.border,
+                          },
+                        ]}
+                        value={formData.date}
+                        onChangeText={(text) => {
+                          // Einfache Validierung für Datumsformat YYYY-MM-DD
+                          const cleaned = text.replace(/[^0-9-]/g, '');
+                          if (cleaned.length <= 10) {
+                            setFormData({ ...formData, date: cleaned });
+                          }
+                        }}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={themeColors.textSecondary}
+                      />
+                      <ThemedText style={[styles.helperText, { color: themeColors.textSecondary }]}>
+                        Format: YYYY-MM-DD (z.B. {new Date().toISOString().split('T')[0]})
+                      </ThemedText>
                     </View>
 
                     <View style={styles.formGroup}>
@@ -689,36 +628,6 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: DesignSystem.typography.fontSize.xs,
     marginTop: DesignSystem.spacing.xs,
-  },
-  datePickerButton: {
-    borderWidth: 1,
-    borderRadius: DesignSystem.borderRadius.md,
-    padding: DesignSystem.spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  datePickerButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: DesignSystem.spacing.sm,
-    flex: 1,
-  },
-  datePickerText: {
-    fontSize: DesignSystem.typography.fontSize.base,
-  },
-  datePickerActions: {
-    marginTop: DesignSystem.spacing.md,
-    alignItems: 'flex-end',
-  },
-  datePickerActionButton: {
-    paddingHorizontal: DesignSystem.spacing.lg,
-    paddingVertical: DesignSystem.spacing.sm,
-    borderRadius: DesignSystem.borderRadius.md,
-  },
-  datePickerActionText: {
-    fontSize: DesignSystem.typography.fontSize.base,
-    fontWeight: DesignSystem.typography.fontWeight.semibold,
   },
 });
 
