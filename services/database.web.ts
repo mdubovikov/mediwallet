@@ -91,3 +91,49 @@ export const getChatConversations = async (
   return webError();
 };
 
+export const addMedication = async (medication: import('@/types/medication').NewMedication): Promise<number> => {
+  return webError();
+};
+
+export const getAllMedications = async (): Promise<import('@/types/medication').Medication[]> => {
+  return webError();
+};
+
+export const getMedicationById = async (id: number): Promise<import('@/types/medication').Medication | null> => {
+  return webError();
+};
+
+export const updateMedication = async (
+  id: number,
+  updates: Partial<import('@/types/medication').NewMedication>
+): Promise<void> => {
+  return webError();
+};
+
+export const deleteMedication = async (id: number): Promise<void> => {
+  return webError();
+};
+
+export const addVaccination = async (vaccination: import('@/types/vaccination').NewVaccination): Promise<number> => {
+  return webError();
+};
+
+export const getAllVaccinations = async (): Promise<import('@/types/vaccination').Vaccination[]> => {
+  return webError();
+};
+
+export const getVaccinationById = async (id: number): Promise<import('@/types/vaccination').Vaccination | null> => {
+  return webError();
+};
+
+export const updateVaccination = async (
+  id: number,
+  updates: Partial<import('@/types/vaccination').NewVaccination>
+): Promise<void> => {
+  return webError();
+};
+
+export const deleteVaccination = async (id: number): Promise<void> => {
+  return webError();
+};
+

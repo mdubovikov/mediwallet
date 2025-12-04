@@ -27,14 +27,29 @@ const getOpenAIApiKey = async (): Promise<string> => {
     const { getUserSettings } = await import('@/services/database');
     const settings = await getUserSettings();
     console.log('Settings loaded:', !!settings);
-    console.log('API key in settings:', !!settings?.openaiApiKey);
+    console.log('AI Provider:', settings?.aiProvider);
+    console.log('AI API Key exists:', !!settings?.aiApiKey);
+    console.log('OpenAI API Key exists:', !!settings?.openaiApiKey);
     
-    if (settings?.openaiApiKey && settings.openaiApiKey.trim() !== '') {
-      console.log('Using database API key (length:', settings.openaiApiKey.length, ')');
-      return settings.openaiApiKey;
-    } else {
-      console.log('No API key found in database');
+    // Neues System: Prüfe aiProvider und aiApiKey
+    if (settings?.aiProvider === 'openai' && settings?.aiApiKey && settings.aiApiKey.trim() !== '') {
+      console.log('Using new system AI API key (length:', settings.aiApiKey.length, ')');
+      return settings.aiApiKey;
     }
+    
+    // Legacy: Fallback auf openaiApiKey
+    if (settings?.openaiApiKey && settings.openaiApiKey.trim() !== '') {
+      console.log('Using legacy OpenAI API key (length:', settings.openaiApiKey.length, ')');
+      return settings.openaiApiKey;
+    }
+    
+    // Wenn aiApiKey vorhanden ist, aber kein Provider gesetzt, verwende es als OpenAI Key
+    if (settings?.aiApiKey && settings.aiApiKey.trim() !== '') {
+      console.log('Using AI API key without provider (assuming OpenAI, length:', settings.aiApiKey.length, ')');
+      return settings.aiApiKey;
+    }
+    
+    console.log('No API key found in database');
   } catch (error: any) {
     console.error('Error loading API key from database:', error);
     console.error('Error details:', {

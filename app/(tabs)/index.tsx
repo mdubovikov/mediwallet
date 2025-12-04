@@ -390,6 +390,30 @@ export default function HomeScreen() {
     router.push('/settings');
   };
 
+  const handleMedications = () => {
+    if (isWeb) {
+      Alert.alert(
+        'Web Preview',
+        'Medikamente sind auf Web nicht verfügbar. Bitte verwenden Sie iOS oder Android für die volle Funktionalität.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    router.push('/medications');
+  };
+
+  const handleVaccinationPass = () => {
+    if (isWeb) {
+      Alert.alert(
+        'Web Preview',
+        'Impfpass ist auf Web nicht verfügbar. Bitte verwenden Sie iOS oder Android für die volle Funktionalität.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    router.push('/vaccination-pass');
+  };
+
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ 
@@ -478,8 +502,46 @@ export default function HomeScreen() {
         <TouchableOpacity 
           style={[
             styles.button, 
+            styles.medicationButton, 
+            { backgroundColor: '#FF6B6B' },
+            isDark && styles.buttonDark
+          ]}
+          onPress={handleMedications}
+          activeOpacity={0.8}
+        >
+          <View style={styles.buttonIconContainer}>
+            <Ionicons name="medical" size={28} color="#fff" />
+          </View>
+          <View style={styles.buttonContent}>
+            <ThemedText style={styles.buttonText}>Medikament</ThemedText>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#fff" style={{ opacity: 0.7 }} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[
+            styles.button, 
+            styles.vaccinationButton, 
+            { backgroundColor: '#FFA500' },
+            isDark && styles.buttonDark
+          ]}
+          onPress={handleVaccinationPass}
+          activeOpacity={0.8}
+        >
+          <View style={styles.buttonIconContainer}>
+            <Ionicons name="shield-checkmark" size={28} color="#fff" />
+          </View>
+          <View style={styles.buttonContent}>
+            <ThemedText style={styles.buttonText}>Impfpass</ThemedText>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#fff" style={{ opacity: 0.7 }} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[
+            styles.button, 
             styles.chatButton, 
-            { backgroundColor: DesignSystem.colors.success },
+            { backgroundColor: '#b9d3ee' },
             isDark && styles.buttonDark
           ]}
           onPress={handleChat}
@@ -595,6 +657,8 @@ const styles = StyleSheet.create({
   primaryButton: {},
   secondaryButton: {},
   accentButton: {},
+  medicationButton: {},
+  vaccinationButton: {},
   chatButton: {},
   settingsButton: {},
   webWarningBanner: {

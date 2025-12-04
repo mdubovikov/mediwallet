@@ -47,4 +47,14 @@ export const sendChatMessage = databaseModule.sendChatMessage;
 export const getChatMessages = databaseModule.getChatMessages;
 export const markChatMessagesAsRead = databaseModule.markChatMessagesAsRead;
 export const getChatConversations = databaseModule.getChatConversations;
+export const addMedication = databaseModule.addMedication;
+export const getAllMedications = databaseModule.getAllMedications;
+export const getMedicationById = databaseModule.getMedicationById;
+export const updateMedication = databaseModule.updateMedication;
+export const deleteMedication = databaseModule.deleteMedication;
+export const addVaccination = databaseModule.addVaccination;
+export const getAllVaccinations = databaseModule.getAllVaccinations;
+export const getVaccinationById = databaseModule.getVaccinationById;
+export const updateVaccination = databaseModule.updateVaccination;
+export const deleteVaccination = databaseModule.deleteVaccination;
 

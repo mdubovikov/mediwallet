@@ -2,6 +2,8 @@ import * as SQLite from 'expo-sqlite';
 import * as FileSystem from 'expo-file-system/legacy';
 import { TestResult, NewTestResult } from '@/types/test-result';
 import { UserSettings, NewUserSettings } from '@/types/user-settings';
+import { Medication, NewMedication } from '@/types/medication';
+import { Vaccination, NewVaccination } from '@/types/vaccination';
 
 const DB_NAME = 'mediwallet.db';
 
@@ -79,6 +81,25 @@ export const initDatabase = async (): Promise<void> => {
         message TEXT NOT NULL,
         created_at TEXT NOT NULL,
         read INTEGER DEFAULT 0
+      );
+      
+      CREATE TABLE IF NOT EXISTS medications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        dosage TEXT,
+        frequency TEXT,
+        notes TEXT,
+        reminder_enabled INTEGER DEFAULT 0,
+        reminder_times TEXT,
+        created_at TEXT NOT NULL
+      );
+      
+      CREATE TABLE IF NOT EXISTS vaccinations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        date TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT NOT NULL
       );
       
       CREATE INDEX IF NOT EXISTS idx_chat_sender_receiver ON chat_messages(sender_id, receiver_id);
@@ -853,3 +874,410 @@ export const getChatConversations = async (userId: string): Promise<ChatConversa
   }
 };
 
+// Hilfsfunktion: Stelle sicher, dass die medications-Tabelle existiert
+const ensureMedicationsTable = async (): Promise<void> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    const tables = await db.getAllAsync<any>(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='medications'"
+    );
+    
+    if (tables.length === 0) {
+      console.log('Creating medications table...');
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS medications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          dosage TEXT,
+          frequency TEXT,
+          notes TEXT,
+          reminder_enabled INTEGER DEFAULT 0,
+          reminder_times TEXT,
+          push_notification_enabled INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL
+        );
+      `);
+      console.log('Medications table created');
+    } else {
+      // Migration: Prüfe, ob neue Spalten existieren
+      const tableInfo = await db.getAllAsync<any>(
+        "PRAGMA table_info(medications)"
+      );
+      const existingColumns = tableInfo.map((col: any) => col.name);
+      
+      if (!existingColumns.includes('reminder_enabled')) {
+        await db.execAsync('ALTER TABLE medications ADD COLUMN reminder_enabled INTEGER DEFAULT 0;');
+        console.log('Added column: reminder_enabled');
+      }
+      if (!existingColumns.includes('reminder_times')) {
+        await db.execAsync('ALTER TABLE medications ADD COLUMN reminder_times TEXT;');
+        console.log('Added column: reminder_times');
+      }
+    }
+  } catch (error) {
+    console.error('Error ensuring medications table:', error);
+    throw error;
+  }
+};
+
+// Medikament hinzufügen
+export const addMedication = async (medication: NewMedication): Promise<number> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureMedicationsTable();
+    
+    const now = new Date().toISOString();
+    const result = await db.runAsync(
+      `INSERT INTO medications (name, dosage, frequency, notes, reminder_enabled, reminder_times, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        medication.name,
+        medication.dosage || null,
+        medication.frequency || null,
+        medication.notes || null,
+        medication.reminderEnabled ? 1 : 0,
+        medication.reminderTimes || null,
+        now,
+      ]
+    );
+    
+    const insertedId = result.lastInsertRowId;
+    console.log('Medication added:', insertedId);
+    return insertedId;
+  } catch (error) {
+    console.error('Error adding medication:', error);
+    throw error;
+  }
+};
+
+// Alle Medikamente abrufen
+export const getAllMedications = async (): Promise<Medication[]> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureMedicationsTable();
+    
+    const result = await db.getAllAsync<any>(
+      `SELECT id, name, dosage, frequency, notes, reminder_enabled, reminder_times, created_at
+       FROM medications
+       ORDER BY name ASC`
+    );
+    
+    return result.map((row) => ({
+      id: row.id,
+      name: row.name,
+      dosage: row.dosage || undefined,
+      frequency: row.frequency || undefined,
+      notes: row.notes || undefined,
+      reminderEnabled: row.reminder_enabled === 1,
+      reminderTimes: row.reminder_times || undefined,
+      createdAt: row.created_at,
+    }));
+  } catch (error) {
+    console.error('Error getting medications:', error);
+    throw error;
+  }
+};
+
+// Medikament nach ID abrufen
+export const getMedicationById = async (id: number): Promise<Medication | null> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureMedicationsTable();
+    
+    const result = await db.getFirstAsync<any>(
+      `SELECT id, name, dosage, frequency, notes, reminder_enabled, reminder_times, created_at
+       FROM medications
+       WHERE id = ?`,
+      [id]
+    );
+    
+    if (!result) {
+      return null;
+    }
+    
+    return {
+      id: result.id,
+      name: result.name,
+      dosage: result.dosage || undefined,
+      frequency: result.frequency || undefined,
+      notes: result.notes || undefined,
+      reminderEnabled: result.reminder_enabled === 1,
+      reminderTimes: result.reminder_times || undefined,
+      createdAt: result.created_at,
+    };
+  } catch (error) {
+    console.error('Error getting medication by id:', error);
+    throw error;
+  }
+};
+
+// Medikament aktualisieren
+export const updateMedication = async (
+  id: number,
+  updates: Partial<NewMedication>
+): Promise<void> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureMedicationsTable();
+    
+    const fields: string[] = [];
+    const values: any[] = [];
+    
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.dosage !== undefined) {
+      fields.push('dosage = ?');
+      values.push(updates.dosage);
+    }
+    if (updates.frequency !== undefined) {
+      fields.push('frequency = ?');
+      values.push(updates.frequency);
+    }
+    if (updates.notes !== undefined) {
+      fields.push('notes = ?');
+      values.push(updates.notes);
+    }
+    if (updates.reminderEnabled !== undefined) {
+      fields.push('reminder_enabled = ?');
+      values.push(updates.reminderEnabled ? 1 : 0);
+    }
+    if (updates.reminderTimes !== undefined) {
+      fields.push('reminder_times = ?');
+      values.push(updates.reminderTimes);
+    }
+    
+    if (fields.length === 0) {
+      return; // Keine Updates
+    }
+    
+    values.push(id);
+    
+    await db.runAsync(
+      `UPDATE medications SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+    
+    console.log('Medication updated:', id);
+  } catch (error) {
+    console.error('Error updating medication:', error);
+    throw error;
+  }
+};
+
+// Medikament löschen
+export const deleteMedication = async (id: number): Promise<void> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureMedicationsTable();
+    
+    await db.runAsync('DELETE FROM medications WHERE id = ?', [id]);
+    console.log('Medication deleted:', id);
+  } catch (error) {
+    console.error('Error deleting medication:', error);
+    throw error;
+  }
+};
+
+// Hilfsfunktion: Stelle sicher, dass die vaccinations-Tabelle existiert
+const ensureVaccinationsTable = async (): Promise<void> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    const tables = await db.getAllAsync<any>(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='vaccinations'"
+    );
+    
+    if (tables.length === 0) {
+      console.log('Creating vaccinations table...');
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS vaccinations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          date TEXT NOT NULL,
+          notes TEXT,
+          created_at TEXT NOT NULL
+        );
+      `);
+      console.log('Vaccinations table created');
+    }
+  } catch (error) {
+    console.error('Error ensuring vaccinations table:', error);
+    throw error;
+  }
+};
+
+// Impfung hinzufügen
+export const addVaccination = async (vaccination: NewVaccination): Promise<number> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureVaccinationsTable();
+    
+    const now = new Date().toISOString();
+    const result = await db.runAsync(
+      `INSERT INTO vaccinations (name, date, notes, created_at)
+       VALUES (?, ?, ?, ?)`,
+      [
+        vaccination.name,
+        vaccination.date,
+        vaccination.notes || null,
+        now,
+      ]
+    );
+    
+    const insertedId = result.lastInsertRowId;
+    console.log('Vaccination added:', insertedId);
+    return insertedId;
+  } catch (error) {
+    console.error('Error adding vaccination:', error);
+    throw error;
+  }
+};
+
+// Alle Impfungen abrufen
+export const getAllVaccinations = async (): Promise<Vaccination[]> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureVaccinationsTable();
+    
+    const result = await db.getAllAsync<any>(
+      `SELECT id, name, date, notes, created_at
+       FROM vaccinations
+       ORDER BY date DESC`
+    );
+    
+    return result.map((row) => ({
+      id: row.id,
+      name: row.name,
+      date: row.date,
+      notes: row.notes || undefined,
+      createdAt: row.created_at,
+    }));
+  } catch (error) {
+    console.error('Error getting vaccinations:', error);
+    throw error;
+  }
+};
+
+// Impfung nach ID abrufen
+export const getVaccinationById = async (id: number): Promise<Vaccination | null> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureVaccinationsTable();
+    
+    const result = await db.getFirstAsync<any>(
+      `SELECT id, name, date, notes, created_at
+       FROM vaccinations
+       WHERE id = ?`,
+      [id]
+    );
+    
+    if (!result) {
+      return null;
+    }
+    
+    return {
+      id: result.id,
+      name: result.name,
+      date: result.date,
+      notes: result.notes || undefined,
+      createdAt: result.created_at,
+    };
+  } catch (error) {
+    console.error('Error getting vaccination by id:', error);
+    throw error;
+  }
+};
+
+// Impfung aktualisieren
+export const updateVaccination = async (
+  id: number,
+  updates: Partial<NewVaccination>
+): Promise<void> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureVaccinationsTable();
+    
+    const fields: string[] = [];
+    const values: any[] = [];
+    
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.date !== undefined) {
+      fields.push('date = ?');
+      values.push(updates.date);
+    }
+    if (updates.notes !== undefined) {
+      fields.push('notes = ?');
+      values.push(updates.notes);
+    }
+    
+    if (fields.length === 0) {
+      return; // Keine Updates
+    }
+    
+    values.push(id);
+    
+    await db.runAsync(
+      `UPDATE vaccinations SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+    
+    console.log('Vaccination updated:', id);
+  } catch (error) {
+    console.error('Error updating vaccination:', error);
+    throw error;
+  }
+};
+
+// Impfung löschen
+export const deleteVaccination = async (id: number): Promise<void> => {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
+  try {
+    await ensureVaccinationsTable();
+    
+    await db.runAsync('DELETE FROM vaccinations WHERE id = ?', [id]);
+    console.log('Vaccination deleted:', id);
+  } catch (error) {
+    console.error('Error deleting vaccination:', error);
+    throw error;
+  }
+};

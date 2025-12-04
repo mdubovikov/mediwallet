@@ -48,6 +48,8 @@ export default function RootLayout() {
         <Stack.Screen name="settings" options={{ title: 'Einstellungen' }} />
         <Stack.Screen name="test-results" options={{ title: 'Testergebnisse' }} />
         <Stack.Screen name="test-detail/[id]" options={{ title: 'Testdetails' }} />
+        <Stack.Screen name="medications" options={{ title: 'Medikamente' }} />
+        <Stack.Screen name="vaccination-pass" options={{ title: 'Impfpass' }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
